@@ -1,0 +1,32 @@
+{
+    "rules": [
+        {
+            "port": 5141,
+            "description": "Logstash rsyslog port",
+            "env": ["logs"],
+            "stages": ["prod", "test"],
+            "fleets": ["*"]
+        },
+        {
+            "port": 9100,
+            "description": "Node exporter on all hosts",
+            "env": ["*"],
+            "stages": ["prod", "test"],
+            "fleets": ["metrics"]
+        },
+        {
+            "port": 9104,
+            "description": "MySQL exporter on app hosts",
+            "env": ["app"],
+            "stages": ["prod", "test"],
+            "fleets": ["metrics"]
+        },
+        {
+            "port": 3306,
+            "description": "MySQL database on app hosts",
+            "env": ["app"],
+            "stages": ["prod", "test"],
+            "fleets": ["backups"]
+        }
+    ]
+}
