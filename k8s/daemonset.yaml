@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: iptables-daemon
+  labels:
+    app: iptables-daemon
+spec:
+  selector:
+    matchLabels:
+      app: iptables-daemon
+  template:
+    metadata:
+      labels:
+        app: iptables-daemon
+    spec:
+      hostNetwork: true
+      hostPID: true
+      securityContext:
+        runAsUser: 0
+      initContainers:
+      - name: init-iptables
+        image: docker-registry/iptables-script:latest
+        command: ["python", "/app/main.py"]
+        env:
+        - name: CONFIG_FILE
+          value: "/app/firewall_rules.json"
+        - name: CONSUL_CATALOG_URL
+          value: "http://localhost:8500/v1/catalog/service/wireguard"
+        volumeMounts:
+        - name: iptables
+          mountPath: /run/xtables.lock
+          subPath: xtables.lock
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+      containers:
+      - name: iptables-daemon
+        image: docker-registry/iptables-script:latest
+        imagePullPolicy: Always
+        env:
+        - name: CONFIG_FILE
+          value: "/app/firewall_rules.json"
+        - name: CONSUL_CATALOG_URL
+          value: "http://localhost:8500/v1/catalog/service/wireguard"
+        volumeMounts:
+        - name: iptables
+          mountPath: /run/xtables.lock
+          subPath: xtables.lock
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN

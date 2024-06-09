@@ -7,7 +7,6 @@ from logger_config import setup_logger
 
 logger = setup_logger()
 
-CONSUL_CATALOG_URL = "http://localhost:8500/v1/catalog/service/wireguard"
 NODES_DATA_FILE = 'nodes.json'
 FIREWALL_RULES = 'rules.json'
 
@@ -31,7 +30,7 @@ def get_mocked_host_ip():
 
 def get_catalog_info():
     try:
-        data = requests.get(CONSUL_CATALOG_URL)
+        data = requests.get(os.environ['CONSUL_CATALOG_URL'])
         logger.info('Successfully fetched catalog info from the Consul')
         return data.json()
     except Exception as e:
@@ -181,4 +180,3 @@ if __name__ == "__main__":
 
     logger.info(f"Host IP: {host_ip}")
     main(host_ip)
-
