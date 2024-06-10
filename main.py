@@ -11,6 +11,7 @@ NODES_DATA_FILE = 'nodes.json'
 FIREWALL_RULES = 'rules.json'
 
 
+# With NET_ADMIN capability and hostNetwork: true, hostPID: true should return host ip address
 def get_host_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -24,10 +25,12 @@ def get_host_ip():
     return ip
 
 
+# Mocked ip address for test
 def get_mocked_host_ip():
     return os.environ['MOCKED_HOST_IP']
 
 
+# Get catalog data from Consul
 def get_catalog_info():
     try:
         data = requests.get(os.environ['CONSUL_CATALOG_URL'])
@@ -38,6 +41,7 @@ def get_catalog_info():
         return []
 
 
+# Mocked Consul catalog
 def get_catalog_info_from_file():
     try:
         with open(NODES_DATA_FILE) as services_file:
@@ -49,6 +53,7 @@ def get_catalog_info_from_file():
         return []
 
 
+# Get firewall rules from the file
 def get_firewall_rules():
     try:
         with open(FIREWALL_RULES) as rules_file:
@@ -60,7 +65,7 @@ def get_firewall_rules():
         return []
 
 
-# Get IPs of services that are allowed to initiate connections
+# Get IPs of nodes that are allowed to initiate connections
 def get_source_ips(data, fleets):
     source_ips = []
 
@@ -76,7 +81,7 @@ def get_source_ips(data, fleets):
     return source_ips
 
 
-# Get IPs of services that are allowed to receive connections
+# Get IPs of nodes that are allowed to receive connections
 def get_destination_ips(data, envs, stages):
     destination_ips = []
 
@@ -114,46 +119,57 @@ def generate_iptables_rules(data, rules, current_host_ip):
 
 
 def get_existing_rules():
+    existing_rules = []
     table = iptc.Table(iptc.Table.FILTER)
     chain = iptc.Chain(table, "INPUT")
-    existing = []
+
     for rule in chain.rules:
-        protocol = rule.protocol
-        if protocol in ["tcp", "udp"]:
-            for match in rule.matches:
-                if match.name == protocol:
-                    dport = int(match.dport)
-                    src = rule.src.split('/')[0]
-                    dst = rule.dst.split('/')[0]
-                    existing.append((protocol, dport, src, dst))
-    logger.info(f"Existing rules: {existing}")
-    return existing
+        for match in rule.matches:
+            if match.name == "tcp":
+                dport = int(match.dport)
+                src = rule.src.split('/')[0]
+                dst = rule.dst.split('/')[0]
+                existing_rules.append((dport, src, dst))
+    logger.info(f"Existing rules: {existing_rules}")
+    return existing_rules
 
 
+# Existing rules will not be added
+# Rules which not in the rules.json will be deleted
 def validate_rules(new_rules, existing_rules):
-    valid_rules = []
-    for rule in new_rules:
-        if rule not in existing_rules:
-            valid_rules.append(rule)
-    logger.info(f"Valid rules to apply: {valid_rules}")
-    return valid_rules
+    rules_to_apply = [rule for rule in new_rules if rule not in existing_rules]
+    rules_to_delete = [rule for rule in existing_rules if rule not in new_rules]
+    logger.info(f"Valid rules to apply: {rules_to_apply}")
+    logger.info(f"Rules to delete: {rules_to_delete}")
+    return rules_to_apply, rules_to_delete
 
 
-def apply_firewall_rules(rules):
+# Manage apply and delete actions
+def manage_rule(port, source_ip, target_ip, action):
     table = iptc.Table(iptc.Table.FILTER)
     chain = iptc.Chain(table, "INPUT")
 
-    # Apply the new rules
-    for port, source_ip, target_ip in rules:
-        rule = iptc.Rule()
-        rule.protocol = "tcp"
-        match = rule.create_match("tcp")
-        match.dport = str(port)
-        rule.src = source_ip
-        rule.dst = target_ip
-        rule.target = iptc.Target(rule, "ACCEPT")
+    rule = iptc.Rule()
+    rule.protocol = "tcp"
+    match = rule.create_match("tcp")
+    match.dport = str(port)
+    rule.src = source_ip
+    rule.dst = target_ip
+    rule.target = iptc.Target(rule, "ACCEPT")
+
+    if action == "insert":
         chain.insert_rule(rule)
         logger.info(f"Applied rule: {port} {source_ip} {target_ip}")
+    elif action == "delete":
+        chain.delete_rule(rule)
+        logger.info(f"Deleted rule: {port} {source_ip} {target_ip}")
+
+
+def apply_firewall_rules(rules_to_apply, rules_to_delete):
+    for port, source_ip, target_ip in rules_to_apply:
+        manage_rule(port, source_ip, target_ip, "insert")
+    for port, source_ip, target_ip in rules_to_delete:
+        manage_rule(port, source_ip, target_ip, "delete")
 
 
 def main(current_host_ip):
@@ -169,8 +185,8 @@ def main(current_host_ip):
 
     generated_rules = generate_iptables_rules(catalog_data, firewall_rules, current_host_ip)
     exist_rules = get_existing_rules()
-    validated_rules = validate_rules(generated_rules, exist_rules)
-    apply_firewall_rules(validated_rules)
+    validated_rules, rules_to_delete = validate_rules(generated_rules, exist_rules)
+    apply_firewall_rules(validated_rules, rules_to_delete)
 
 
 if __name__ == "__main__":

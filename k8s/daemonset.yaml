@@ -28,26 +28,32 @@ spec:
           value: "http://localhost:8500/v1/catalog/service/wireguard"
         volumeMounts:
         - name: iptables
-          mountPath: /run/xtables.lock
+          mountPath: /run/xtables.lock  # Mount the iptables lock file for init
           subPath: xtables.lock
         securityContext:
           capabilities:
             add:
             - NET_ADMIN
       containers:
-      - name: iptables-daemon
-        image: docker-registry/iptables-script:latest
-        imagePullPolicy: Always
-        env:
-        - name: CONFIG_FILE
-          value: "/app/firewall_rules.json"
-        - name: CONSUL_CATALOG_URL
-          value: "http://localhost:8500/v1/catalog/service/wireguard"
-        volumeMounts:
-        - name: iptables
-          mountPath: /run/xtables.lock
-          subPath: xtables.lock
-        securityContext:
-          capabilities:
-            add:
-            - NET_ADMIN
+        - name: iptables-daemon
+          image: docker-registry/iptables-script:latest
+          imagePullPolicy: Always
+          env:
+            - name: CONFIG_FILE
+              value: "/app/firewall_rules.json"
+            - name: CONSUL_CATALOG_URL
+              value: "http://localhost:8500/v1/catalog/service/wireguard"
+          volumeMounts:
+            - name: iptables
+              mountPath: /run/xtables.lock
+              subPath: xtables.lock # Mount the iptables lock file for cron exec
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+          restartPolicy: Always
+          volumes:
+            - name: iptables
+              hostPath:
+                path: /run/xtables.lock
+                type: FileOrCreate
